@@ -181,7 +181,7 @@ const clock = new THREE.Clock()
 const tick = () => {
     const elapsedTime = clock.getElapsedTime()
 
-    earth.rotation.y = elapsedTime * 0.1
+    earth.rotation.y = elapsedTime * 0.02
 
     // Update controls
     controls.update()
