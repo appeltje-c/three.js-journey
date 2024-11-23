@@ -3,7 +3,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
+import CustomShaderMaterial from 'three-custom-shader-material/vanilla'
 import GUI from 'lil-gui'
+import slicedVertexShader from './shaders/sliced/vertex.glsl'
+import slicedFragmentShader from './shaders/sliced/fragment.glsl'
 
 /**
  * Base
@@ -28,8 +31,7 @@ gltfLoader.setDRACOLoader(dracoLoader)
 /**
  * Environment map
  */
-rgbeLoader.load('./aerodynamics_workshop.hdr', (environmentMap) =>
-{
+rgbeLoader.load('./aerodynamics_workshop.hdr', (environmentMap) => {
     environmentMap.mapping = THREE.EquirectangularReflectionMapping
 
     scene.background = environmentMap
@@ -40,8 +42,13 @@ rgbeLoader.load('./aerodynamics_workshop.hdr', (environmentMap) =>
 /**
  * Sliced model
  */
-// Geometry
-const geometry = new THREE.IcosahedronGeometry(2.5, 5)
+const uniforms = {
+    uSliceStart: new THREE.Uniform(1.75),
+    uSliceArc: new THREE.Uniform(1.25)
+}
+
+gui.add(uniforms.uSliceStart, 'value').min(-Math.PI).max(Math.PI).step(0.001).name('uSliceStart')
+gui.add(uniforms.uSliceArc, 'value').min(0).max(Math.PI * 2).step(0.001).name('uSliceArc')
 
 // Material
 const material = new THREE.MeshStandardMaterial({
@@ -51,9 +58,43 @@ const material = new THREE.MeshStandardMaterial({
     color: '#858080'
 })
 
-// Mesh
-const mesh = new THREE.Mesh(geometry, material)
-scene.add(mesh)
+const slicedMaterial = new CustomShaderMaterial({
+
+    // Base material
+    baseMaterial: new THREE.MeshStandardMaterial,
+    vertexShader: slicedVertexShader,
+    fragmentShader: slicedFragmentShader,
+    uniforms,
+    silent: true,
+
+    metalness: 0.5,
+    roughness: 0.25,
+    envMapIntensity: 0.5,
+    color: '#858080'
+})
+
+// Gltf loader
+let model = null
+gltfLoader.load('./gears.glb', (gltf) => {
+
+    model = gltf.scene
+
+    model.traverse((child) => {
+        if (child.isMesh) {
+
+            if (child.name === 'outerHull') {
+                child.material = slicedMaterial
+            } else {
+                child.material = material
+            }
+
+            child.castShadow = true
+            child.receiveShadow = true
+        }
+    })
+
+    scene.add(model)
+})
 
 /**
  * Plane
@@ -94,8 +135,7 @@ const sizes = {
     pixelRatio: Math.min(window.devicePixelRatio, 2)
 }
 
-window.addEventListener('resize', () =>
-{
+window.addEventListener('resize', () => {
     // Update sizes
     sizes.width = window.innerWidth
     sizes.height = window.innerHeight
@@ -141,9 +181,13 @@ renderer.setPixelRatio(sizes.pixelRatio)
  */
 const clock = new THREE.Clock()
 
-const tick = () =>
-{
+const tick = () => {
     const elapsedTime = clock.getElapsedTime()
+
+    // Update model
+    if (model) {
+        model.rotation.y = elapsedTime * 0.5
+    }
 
     // Update controls
     controls.update()
