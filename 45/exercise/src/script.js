@@ -1,6 +1,15 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
+import { DotScreenPass } from 'three/examples/jsm/postprocessing/DotScreenPass.js'
+import { GlitchPass } from 'three/examples/jsm/postprocessing/GlitchPass.js'
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
+import { RGBShiftShader } from 'three/examples/jsm/shaders/RGBShiftShader.js'
+import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader.js'
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js'
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import GUI from 'lil-gui'
 
 /**
@@ -25,12 +34,9 @@ const textureLoader = new THREE.TextureLoader()
 /**
  * Update all materials
  */
-const updateAllMaterials = () =>
-{
-    scene.traverse((child) =>
-    {
-        if(child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial)
-        {
+const updateAllMaterials = () => {
+    scene.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
             child.material.envMapIntensity = 2.5
             child.material.needsUpdate = true
             child.castShadow = true
@@ -59,8 +65,7 @@ scene.environment = environmentMap
  */
 gltfLoader.load(
     '/models/DamagedHelmet/glTF/DamagedHelmet.gltf',
-    (gltf) =>
-    {
+    (gltf) => {
         gltf.scene.scale.set(2, 2, 2)
         gltf.scene.rotation.y = Math.PI * 0.5
         scene.add(gltf.scene)
@@ -88,8 +93,7 @@ const sizes = {
     height: window.innerHeight
 }
 
-window.addEventListener('resize', () =>
-{
+window.addEventListener('resize', () => {
     // Update sizes
     sizes.width = window.innerWidth
     sizes.height = window.innerHeight
@@ -101,6 +105,10 @@ window.addEventListener('resize', () =>
     // Update renderer
     renderer.setSize(sizes.width, sizes.height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+
+    // Update effect composer
+    effectComposer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    effectComposer.setSize(sizes.width, sizes.height)
 })
 
 /**
@@ -130,19 +138,129 @@ renderer.setSize(sizes.width, sizes.height)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
 /**
+ * Post Processing
+ */
+const renderTarget = new THREE.WebGLRenderTarget(
+    800,
+    600,
+    {
+        samples: renderer.getPixelRatio() === 1 ? 2 : 0
+    }
+)
+
+const effectComposer = new EffectComposer(renderer, renderTarget)
+effectComposer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+effectComposer.setSize(sizes.width, sizes.height)
+
+const renderPass = new RenderPass(scene, camera)
+effectComposer.addPass(renderPass)
+
+const dotScreenPass = new DotScreenPass()
+dotScreenPass.enabled = false
+effectComposer.addPass(dotScreenPass)
+
+const glitchPass = new GlitchPass()
+glitchPass.enabled = false
+effectComposer.addPass(glitchPass)
+
+const rgbShiftPass = new ShaderPass(RGBShiftShader)
+rgbShiftPass.enabled = false
+effectComposer.addPass(rgbShiftPass)
+
+const unrealBloomPass = new UnrealBloomPass({
+    strength: 1,
+    radius: 1,
+    threshold: 0
+})
+unrealBloomPass.enabled = false
+effectComposer.addPass(unrealBloomPass)
+
+const gammaCorrectionShader = new ShaderPass(GammaCorrectionShader)
+effectComposer.addPass(gammaCorrectionShader)
+
+const TintShader = {
+    uniforms: {
+        tDiffuse: { value: null },
+        uTint: { value: new THREE.Vector3(0.2, 0, 0) }
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            vUv = uv;
+        }`,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        varying vec2 vUv;
+        uniform vec3 uTint;
+        void main() {
+            vec4 color = texture2D(tDiffuse, vUv);
+            color.rgb += uTint;
+            
+            gl_FragColor = color;
+        }`
+}
+const tintPass = new ShaderPass(TintShader)
+tintPass.enabled = false
+effectComposer.addPass(tintPass)
+
+gui.add(tintPass.material.uniforms.uTint.value, 'x').min(-1).max(1).step(0.001).name('R')
+gui.add(tintPass.material.uniforms.uTint.value, 'y').min(-1).max(1).step(0.001).name('G')
+gui.add(tintPass.material.uniforms.uTint.value, 'z').min(-1).max(1).step(0.001).name('B')
+
+const DisplacementShader = {
+    uniforms: {
+        tDiffuse: { value: null },
+        uNormalMap: { value: null }
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            vUv = uv;
+        }`,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform sampler2D uNormalMap;
+        varying vec2 vUv;
+        void main() {
+            vec3 normalColor = texture2D(uNormalMap, vUv).xyz * 2.0 - 1.0;
+            vec2 newUv = vUv + normalColor.xy * 0.1; 
+            vec4 color = texture2D(tDiffuse, newUv);
+
+            vec3 lightDirection = normalize(vec3(-1.0, 1.0, 0.0));
+            float lightness = clamp(dot(normalColor, lightDirection), 0.0, 1.0);
+            color.rgb += lightness * 2.0;
+            
+            gl_FragColor = color;
+        }`
+}
+const displacementPass = new ShaderPass(DisplacementShader)
+displacementPass.material.uniforms.uNormalMap.value = textureLoader.load('/textures/interfaceNormalMap.png')
+displacementPass.enabled = true
+effectComposer.addPass(displacementPass)
+
+
+if (renderer.getPixelRatio() === 1 && !renderer.capabilities.isWebGL2) {
+    const smaaPass = new SMAAPass()
+    smaaPass.enabled = false
+    effectComposer.addPass(smaaPass)
+}
+/**
  * Animate
  */
 const clock = new THREE.Clock()
 
-const tick = () =>
-{
+const tick = () => {
     const elapsedTime = clock.getElapsedTime()
+
 
     // Update controls
     controls.update()
 
     // Render
-    renderer.render(scene, camera)
+    //renderer.render(scene, camera)
+    effectComposer.render()
 
     // Call tick again on the next frame
     window.requestAnimationFrame(tick)
