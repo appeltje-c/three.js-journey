@@ -1,5 +1,14 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import Stats from 'stats.js'
+import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+
+/**
+ * Stats
+ */
+const stats = new Stats()
+stats.showPanel(0) // 0: fps, 1: ms, 2: mb, 3+: custom
+document.body.appendChild(stats.dom)
 
 /**
  * Base
@@ -121,7 +130,10 @@ const clock = new THREE.Clock()
 
 const tick = () =>
 {
+
+    stats.begin()
     const elapsedTime = clock.getElapsedTime()
+
 
     // Update test mesh
     torusKnot.rotation.y = elapsedTime * 0.1
@@ -134,6 +146,7 @@ const tick = () =>
 
     // Call tick again on the next frame
     window.requestAnimationFrame(tick)
+    stats.end()
 }
 
 tick()
