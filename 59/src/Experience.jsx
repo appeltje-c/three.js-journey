@@ -1,31 +1,38 @@
 import { OrbitControls } from '@react-three/drei'
 import { Perf } from 'r3f-perf'
+import Hamburger from './Hamburger'
+import { Suspense } from 'react'
+import Placeholder from './Placeholder'
+import Fox from './Fox'
 
-export default function Experience()
-{
-    return <>
+export default function Experience() {
 
-        <Perf position="top-left" />
+    return (
+        <>
 
-        <OrbitControls makeDefault />
+            <Perf position="top-left" />
 
-        <directionalLight castShadow position={ [ 1, 2, 3 ] } intensity={ 4.5 } />
-        <ambientLight intensity={ 1.5 } />
+            <OrbitControls makeDefault />
 
-        <mesh castShadow position-x={ - 2 }>
-            <sphereGeometry />
-            <meshStandardMaterial color="orange" />
-        </mesh>
+            <directionalLight castShadow position={[1, 2, 3]} intensity={4.5} shadow-normalBias={0.04} />
+            <ambientLight intensity={1.5} />
 
-        <mesh castShadow position-x={ 2 } scale={ 1.5 }>
-            <boxGeometry />
-            <meshStandardMaterial color="mediumpurple" />
-        </mesh>
+            <mesh receiveShadow position-y={- 1} rotation-x={- Math.PI * 0.5} scale={10}>
+                <planeGeometry />
+                <meshStandardMaterial color="greenyellow" />
+            </mesh>
 
-        <mesh receiveShadow position-y={ - 1 } rotation-x={ - Math.PI * 0.5 } scale={ 10 }>
-            <planeGeometry />
-            <meshStandardMaterial color="greenyellow" />
-        </mesh>
+            <Suspense
+                fallback={
+                    <Placeholder position-y={0.5} scale={[2, 3, 2]} />
+                }>
+                <Hamburger scale={0.5} position-y={-1.2} />
+            </Suspense>
 
-    </>
+            <Suspense>
+                <Fox scale={0.04} position-x={-4} position-y={-1} />
+            </Suspense>
+
+        </>
+    )
 }
