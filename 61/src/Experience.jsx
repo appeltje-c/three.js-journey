@@ -8,8 +8,8 @@ import { useRef } from 'react'
 const PortalMaterial = shaderMaterial(
     {
         uTime: 0,
-        uColorStart: new Color('#c4d58a'),
-        uColorEnd: new Color('#ffffff'),
+        uColorStart: new Color('#fffded'),
+        uColorEnd: new Color('#fffef9'),
     },
     portalVertexShader,
     portalFragmentShader)
